@@ -1,0 +1,175 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>vLLM – Local Chat</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 0; background:#0b0d12; color:#e7e9ee; }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 24px; }
+    .chat { background:#121520; border:1px solid #22283a; border-radius:14px; padding:16px; min-height: 50vh; }
+    .msg { margin: 10px 0; white-space: pre-wrap; }
+    .user { color:#b6f; }
+    .assistant { color:#9ee37d; }
+    .row { display:flex; gap:8px; margin-top:12px; }
+    textarea { flex:1; background:#0f1220; color:#e7e9ee; border:1px solid #22283a; border-radius:10px; padding:10px; resize:vertical; min-height:70px; }
+    button { background:#2a60ff; color:white; border:none; border-radius:10px; padding:10px 14px; cursor:pointer; }
+    .top { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap: wrap; }
+    input[type=text] { background:#0f1220; color:#e7e9ee; border:1px solid #22283a; border-radius:10px; padding:8px; }
+    label { display:flex; align-items:center; gap:6px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <h1>vLLM – Local Chat</h1>
+      <label>Model <input id="model" type="text" value="NousResearch/Meta-Llama-3-8B-Instruct" size="34"/></label>
+      <label>API key <input id="apikey" type="text" value="devkey123" size="14"/></label>
+      <label><input id="useRag" type="checkbox"> Use RAG</label>
+    </div>
+
+    <div id="chat" class="chat"></div>
+    <div class="row"><textarea id="prompt" placeholder="Ask me anything…"></textarea><button id="send">Send</button></div>
+  </div>
+
+  <script>
+  const chatEl   = document.getElementById('chat');
+  const promptEl = document.getElementById('prompt');
+  const sendBtn  = document.getElementById('send');
+  const modelEl  = document.getElementById('model');
+  const keyEl    = document.getElementById('apikey');
+  const useRagEl = document.getElementById('useRag');
+
+  const history = [];
+
+  function add(role, text) {
+    const div = document.createElement('div');
+    div.className = `msg ${role}`;
+    div.textContent = (role === 'user' ? 'You: ' : 'Assistant: ') + text;
+    chatEl.appendChild(div);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  // On load: auto-fill model from /v1/models (first served model)
+  (async () => {
+    try {
+      const r = await fetch('/v1/models', {
+        headers: keyEl.value ? { 'Authorization': `Bearer ${keyEl.value}` } : {}
+      });
+      const j = await r.json();
+      const first = j?.data?.[0]?.id;
+      if (first) modelEl.value = first;          // e.g. astronomer/Llama-3-8B-Instruct-GPTQ-8-Bit
+    } catch (e) {
+      console.warn('Could not fetch /v1/models:', e);
+    }
+  })();
+
+  async function chat() {
+    const userText = promptEl.value.trim();
+    if (!userText) return;
+    promptEl.value = '';
+    sendBtn.disabled = true;
+
+    history.push({ role: 'user', content: userText });
+    add('user', userText);
+
+    try {
+      if (useRagEl.checked) {
+        // non-streaming RAG call
+        const r = await fetch('/rag/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: history, k: 5 })
+        });
+        const j = await r.json();
+        const text =
+          j.choices?.[0]?.message?.content ||
+          j.error?.detail || j.error || JSON.stringify(j);
+        add('assistant', text);
+        history.push({ role: 'assistant', content: text });
+        return;
+      }
+
+      // Streaming chat via vLLM
+      const reqBody = {
+        model: modelEl.value,          // must match /v1/models
+        messages: history,
+        stream: true,
+        max_tokens: 512
+      };
+
+      const resp = await fetch('/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(keyEl.value ? { 'Authorization': `Bearer ${keyEl.value}` } : {})
+        },
+        body: JSON.stringify(reqBody)
+      });
+
+      // If backend did NOT return SSE, fall back to JSON (likely an error or non-streaming)
+      const ctype = resp.headers.get('content-type') || '';
+      if (!resp.ok || !ctype.includes('text/event-stream')) {
+        const text = await resp.text();
+        try {
+          const j = JSON.parse(text);
+          const out =
+            j.choices?.[0]?.message?.content ||
+            j.error?.message || j.error?.detail || text;
+          add('assistant', out);
+          history.push({ role: 'assistant', content: out });
+        } catch {
+          add('assistant', text || '(empty response)');
+          history.push({ role: 'assistant', content: text || '' });
+        }
+        return;
+      }
+
+      // SSE stream parsing
+      let assistantText = '';
+      const reader  = resp.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+
+      const assistantDiv = document.createElement('div');
+      assistantDiv.className = 'msg assistant';
+      assistantDiv.textContent = 'Assistant: ';
+      chatEl.appendChild(assistantDiv);
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          const s = line.trim();
+          if (!s.startsWith('data:')) continue;
+          const payload = s.slice(5).trim();
+          if (payload === '[DONE]') { break; }
+          try {
+            const evt = JSON.parse(payload);
+            const delta = evt.choices?.[0]?.delta?.content || '';
+            assistantText += delta;
+            assistantDiv.textContent = 'Assistant: ' + assistantText;
+            chatEl.scrollTop = chatEl.scrollHeight;
+          } catch { /* ignore parse errors on keep-alives */ }
+        }
+      }
+
+      history.push({ role: 'assistant', content: assistantText });
+
+    } catch (err) {
+      add('assistant', `Error: ${err}`);
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  sendBtn.addEventListener('click', chat);
+  promptEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) chat();
+  });
+</script>
+
+</body>
+</html>
