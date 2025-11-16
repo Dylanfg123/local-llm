@@ -1,5 +1,5 @@
 # Node.js dependencies
-/node_modules
+ui/node_modules
 
 # Build artifacts
 /dist
