@@ -1,45 +1,261 @@
-<!doctype html>
+﻿<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>vLLM – Local Chat</title>
+  <title>vLLM - Local Chat</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    body { font: 14px/1.4 system-ui, sans-serif; margin: 0; background:#0b0d12; color:#e7e9ee; }
-    .wrap { max-width: 860px; margin: 0 auto; padding: 24px; }
-    .chat { background:#121520; border:1px solid #22283a; border-radius:14px; padding:16px; min-height: 50vh; }
-    .msg { margin: 10px 0; white-space: pre-wrap; }
-    .user { color:#b6f; }
-    .assistant { color:#9ee37d; }
-    .row { display:flex; gap:8px; margin-top:12px; }
-    textarea { flex:1; background:#0f1220; color:#e7e9ee; border:1px solid #22283a; border-radius:10px; padding:10px; resize:vertical; min-height:70px; }
-    button { background:#2a60ff; color:white; border:none; border-radius:10px; padding:10px 14px; cursor:pointer; }
-    .top { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap: wrap; }
-    input[type=text] { background:#0f1220; color:#e7e9ee; border:1px solid #22283a; border-radius:10px; padding:8px; }
-    label { display:flex; align-items:center; gap:6px; }
-    .upload { margin:12px 0 18px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
-    .upload input[type=file] { color:#e7e9ee; }
-    .upload-status { min-height:1.4em; font-size:13px; opacity:0.85; }
+    :root {
+      color-scheme: dark;
+      --bg: #030611;
+      --panel: rgba(9, 12, 26, 0.9);
+      --panel-border: #1d2340;
+      --accent: #5c7cfa;
+      --accent-strong: #7b92ff;
+      --text: #e7e9ee;
+      --text-muted: #8f98b7;
+      --user: #b68eff;
+      --assistant: #9ee37d;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      font: 15px/1.5 'Inter', 'Segoe UI', system-ui, sans-serif;
+      margin: 0;
+      color: var(--text);
+      background: radial-gradient(circle at top right, #1a2144 0%, transparent 45%),
+                  radial-gradient(circle at 20% 10%, #111b35 0%, transparent 50%),
+                  var(--bg);
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+      min-height: 100vh;
+      padding: 32px;
+      overflow: hidden;
+    }
+    .wrap {
+      width: min(1240px, 100%);
+      display: grid;
+      grid-template-columns: minmax(0, 1.65fr) minmax(260px, 0.85fr);
+      gap: 24px;
+      min-height: calc(100vh - 64px);
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 20px;
+      padding: 20px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 15px 35px rgba(2, 4, 12, 0.55);
+    }
+    .workspace {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      min-height: 0;
+    }
+    .workspace header h1 {
+      margin: 0;
+      font-size: 1.95rem;
+    }
+    .workspace header p {
+      margin: 4px 0 0;
+      color: var(--text-muted);
+    }
+    .chat {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      background: #050814;
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .msg {
+      white-space: pre-wrap;
+      line-height: 1.5;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #090f25;
+    }
+    .msg.user {
+      border: 1px solid rgba(182, 142, 255, 0.4);
+      color: var(--user);
+      align-self: flex-end;
+      max-width: 85%;
+    }
+    .msg.assistant {
+      border: 1px solid rgba(158, 227, 125, 0.4);
+      color: var(--assistant);
+      align-self: flex-start;
+      max-width: 85%;
+    }
+    .composer {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    textarea {
+      flex: 1;
+      background: #050a18;
+      color: var(--text);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 12px 14px;
+      resize: none;
+      min-height: 86px;
+      font: inherit;
+      line-height: 1.4;
+    }
+    textarea:focus { outline: 2px solid var(--accent); }
+    button {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 16px;
+      padding: 12px 20px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+    }
+    button:hover:not(:disabled) { background: var(--accent-strong); transform: translateY(-1px); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .hint { margin: 0; color: var(--text-muted); font-size: 0.85rem; }
+    .side {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-height: 0;
+      max-height: calc(100vh - 64px);
+      overflow-y: auto;
+      padding-right: 6px;
+    }
+    .panel-title {
+      margin: 0 0 12px;
+      text-transform: uppercase;
+      font-size: 0.85rem;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+    .toggle-group { display: flex; flex-wrap: wrap; gap: 10px; }
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: 1px solid var(--panel-border);
+      background: #050814;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+    .toggle.active { border-color: var(--accent); background: #111a3a; }
+    .upload-card {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+    .upload-card input[type=file] {
+      border: 1px dashed var(--panel-border);
+      border-radius: 14px;
+      padding: 10px 14px;
+      background: #050814;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .upload-status { min-height: 1.2em; font-size: 0.85rem; color: var(--text-muted); }
+    details.panel { padding: 0; }
+    details summary {
+      padding: 18px 20px;
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--text-muted);
+      list-style: none;
+    }
+    details[open] summary { color: var(--text); }
+    details .advanced-body { padding: 0 20px 20px; }
+    .advanced-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .advanced-grid label { display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; color: var(--text-muted); }
+    input[type=text] {
+      background: #040814;
+      color: var(--text);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 10px;
+      font: inherit;
+    }
+    @media (max-width: 1024px) {
+      body { padding: 18px; overflow: auto; }
+      .wrap { grid-template-columns: 1fr; min-height: auto; }
+      .workspace { min-height: auto; }
+      .chat { height: 50vh; }
+      .side { max-height: none; overflow: visible; }
+    }
+    @media (max-width: 640px) {
+      .composer { flex-direction: column; }
+      textarea { min-height: 120px; }
+      button { width: 100%; }
+      .toggle-group { flex-direction: column; }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="top">
-      <h1>vLLM – Local Chat</h1>
-      <label>Model <input id="model" type="text" value="NousResearch/Meta-Llama-3-8B-Instruct" size="34"/></label>
-      <label>API key <input id="apikey" type="text" value="devkey123" size="14"/></label>
-      <label><input id="useRag" type="checkbox"> Use RAG</label>
-      <label><input id="useWeb" type="checkbox"> Enable Web Search</label>
-    </div>
+    <section class="workspace panel">
+      <header>
+        <h1>vLLM - Local Chat</h1>
+        <p>Bring together local models, retrieval, and web search in one workspace. The chat window is the only scrollable area so the rest of the UI stays put.</p>
+      </header>
+      <div id="chat" class="chat"></div>
+      <div class="composer">
+        <textarea id="prompt" rows="3" placeholder="Ask me anything..."></textarea>
+        <button id="send">Send</button>
+      </div>
+      <p class="hint">Enter to send, Shift+Enter for a new line.</p>
+    </section>
 
-    <div class="upload">
-      <input id="docFile" type="file" accept=".txt,.md,.json,.csv,.log,.html,.py,.js,.ts" />
-      <button id="uploadBtn" type="button">Upload &amp; Ingest</button>
-      <span id="uploadStatus" class="upload-status"></span>
-    </div>
+    <aside class="side">
+      <div class="panel">
+        <p class="panel-title">Assist Modes</p>
+        <div class="toggle-group">
+          <label class="toggle" id="ragToggle"><input id="useRag" type="checkbox"> Use RAG</label>
+          <label class="toggle" id="webToggle"><input id="useWeb" type="checkbox"> Web Search</label>
+        </div>
+      </div>
 
-    <div id="chat" class="chat"></div>
-    <div class="row"><textarea id="prompt" placeholder="Ask me anything…"></textarea><button id="send">Send</button></div>
+      <div class="panel">
+        <p class="panel-title">Document Ingestion</p>
+        <div class="upload-card">
+          <input id="docFile" type="file" accept=".txt,.md,.json,.csv,.log,.html,.py,.js,.ts" />
+          <button id="uploadBtn" type="button">Upload &amp; Ingest</button>
+        </div>
+        <div id="uploadStatus" class="upload-status"></div>
+      </div>
+
+      <details class="panel advanced">
+        <summary>Advanced Settings</summary>
+        <div class="advanced-body">
+          <div class="advanced-grid">
+            <label>Model
+              <input id="model" type="text" value="NousResearch/Meta-Llama-3-8B-Instruct" />
+            </label>
+            <label>API key
+              <input id="apikey" type="text" value="devkey123" />
+            </label>
+          </div>
+        </div>
+      </details>
+    </aside>
   </div>
 
   <script>
@@ -50,6 +266,8 @@
   const keyEl    = document.getElementById('apikey');
   const useRagEl = document.getElementById('useRag');
   const useWebEl = document.getElementById('useWeb');
+  const ragToggle = document.getElementById('ragToggle');
+  const webToggle = document.getElementById('webToggle');
 
   const fileEl   = document.getElementById('docFile');
   const uploadBtn = document.getElementById('uploadBtn');
@@ -60,12 +278,20 @@
   function add(role, text) {
     const div = document.createElement('div');
     div.className = `msg ${role}`;
-    div.textContent = (role === 'user' ? 'You: ' : 'Assistant: ') + text;
+    const prefix = role === 'user' ? 'You: ' : 'Assistant: ';
+    div.textContent = prefix + text;
     chatEl.appendChild(div);
     chatEl.scrollTop = chatEl.scrollHeight;
   }
 
-  // On load: auto-fill model from /v1/models (first served model)
+  function renderToggleState() {
+    ragToggle.classList.toggle('active', useRagEl.checked);
+    webToggle.classList.toggle('active', useWebEl.checked);
+  }
+
+  useRagEl.addEventListener('change', renderToggleState);
+  useWebEl.addEventListener('change', renderToggleState);
+
   (async () => {
     try {
       const r = await fetch('/v1/models', {
@@ -73,7 +299,7 @@
       });
       const j = await r.json();
       const first = j?.data?.[0]?.id;
-      if (first) modelEl.value = first;          // e.g. astronomer/Llama-3-8B-Instruct-GPTQ-8-Bit
+      if (first) modelEl.value = first;
     } catch (e) {
       console.warn('Could not fetch /v1/models:', e);
     }
@@ -92,7 +318,6 @@
       const useRag = useRagEl.checked;
       const useWeb = useWebEl.checked;
       if (useRag || useWeb) {
-        // non-streaming RAG call
         const r = await fetch('/rag/query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -113,9 +338,8 @@
         return;
       }
 
-      // Streaming chat via vLLM
       const reqBody = {
-        model: modelEl.value,          // must match /v1/models
+        model: modelEl.value,
         messages: history,
         stream: true,
         max_tokens: 512
@@ -130,7 +354,6 @@
         body: JSON.stringify(reqBody)
       });
 
-      // If backend did NOT return SSE, fall back to JSON (likely an error or non-streaming)
       const ctype = resp.headers.get('content-type') || '';
       if (!resp.ok || !ctype.includes('text/event-stream')) {
         const text = await resp.text();
@@ -148,7 +371,6 @@
         return;
       }
 
-      // SSE stream parsing
       let assistantText = '';
       const reader  = resp.body.getReader();
       const decoder = new TextDecoder('utf-8');
@@ -175,7 +397,7 @@
             assistantText += delta;
             assistantDiv.textContent = 'Assistant: ' + assistantText;
             chatEl.scrollTop = chatEl.scrollHeight;
-          } catch { /* ignore parse errors on keep-alives */ }
+          } catch {}
         }
       }
 
@@ -185,12 +407,16 @@
       add('assistant', `Error: ${err}`);
     } finally {
       sendBtn.disabled = false;
+      promptEl.focus();
     }
   }
 
   sendBtn.addEventListener('click', chat);
   promptEl.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) chat();
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      chat();
+    }
   });
 
   uploadBtn.addEventListener('click', async () => {
@@ -220,7 +446,10 @@
       uploadBtn.disabled = false;
     }
   });
-</script>
+
+  renderToggleState();
+  promptEl.focus();
+  </script>
 
 </body>
 </html>
