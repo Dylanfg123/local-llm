@@ -21,17 +21,17 @@ app.use((req, _res, next) => {
 // Serve ./public
 app.use(express.static("./public"));
 
-// Legacy aliases → redirect to v1 before proxying
+// Legacy aliases redirect to v1 before proxying
 app.all("/models", (req, res) => res.redirect(307, "/v1/models"));
 app.all("/chat/completions", (req, res) => res.redirect(307, "/v1/chat/completions"));
 
-
-// OpenAI-compatible API → vLLM
+// OpenAI-compatible API -> vLLM
 app.use("/v1", createProxyMiddleware({
   target: VLLM_URL,
   changeOrigin: true,
   ws: true,
   logLevel: "debug",
+  pathRewrite: path => `/v1${path}`,
 }));
 
 // RAG passthrough

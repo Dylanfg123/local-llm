@@ -1,6 +1,9 @@
 # Node.js dependencies
 ui/node_modules
 
+# Model data
+qdrant_data
+
 # Build artifacts
 /dist
 /build

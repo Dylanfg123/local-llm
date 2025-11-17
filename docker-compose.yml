@@ -26,16 +26,16 @@ services:
   rag-api:
     image: python:3.11-slim
     working_dir: /app
-    command: sh -c "pip install --no-cache-dir fastapi uvicorn[standard] httpx && uvicorn app:app --host 0.0.0.0 --port 7000"
+    command: sh -c "pip install --no-cache-dir fastapi uvicorn[standard] httpx python-multipart pypdf ddgs && uvicorn app:app --host 0.0.0.0 --port 7000"
     volumes:
-      - ./app.py:/app/app.py:ro
+      - ./rag/app.py:/app/app.py:ro
     environment:
       # TALK TO VLLM THROUGH THE UI PROXY OR DIRECTLY WITH /v1 (both OK)
       - VLLM_URL=http://vllm:8000
       - QDRANT_URL=http://qdrant:6333
-      - TEI_URL=http://tei:8080
+      - TEI_URL=http://embedder
       - OPENAI_API_KEY=devkey123
-    depends_on: [ vllm, qdrant, tei ]
+    depends_on: [ vllm, qdrant, embedder]
     ports: ["7000:7000"]
     networks: [ llmnet ]
 
@@ -53,16 +53,30 @@ services:
     networks: [ llmnet ]
 
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:latest # override via .env when older data files require a legacy build
+    volumes:
+      - ./qdrant_data:/qdrant/storage
     ports: ["6333:6333"]
     networks: [ llmnet ]
 
-  tei:
-    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+  embedder:
+    image: python:3.11-slim
+    working_dir: /app
+    command: >
+      sh -c "pip install --no-cache-dir fastapi uvicorn[standard] pydantic sentence-transformers &&
+      uvicorn embed_service:app --host 0.0.0.0 --port 80"
+    volumes:
+      - ./rag/embed_service.py:/app/embed_service.py:ro
+      - "C:\\AI_Models:/root/.cache/huggingface"
     environment:
       - MODEL_ID=sentence-transformers/all-MiniLM-L6-v2
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HUGGINGFACEHUB_API_TOKEN=${HF_TOKEN:-}
+      - HF_HOME=/root/.cache/huggingface
+      - TRANSFORMERS_CACHE=/root/.cache/huggingface
     ports: ["8080:80"]
     networks: [ llmnet ]
+
 
 networks:
   llmnet:

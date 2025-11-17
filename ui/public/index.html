@@ -17,6 +17,9 @@
     .top { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap: wrap; }
     input[type=text] { background:#0f1220; color:#e7e9ee; border:1px solid #22283a; border-radius:10px; padding:8px; }
     label { display:flex; align-items:center; gap:6px; }
+    .upload { margin:12px 0 18px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    .upload input[type=file] { color:#e7e9ee; }
+    .upload-status { min-height:1.4em; font-size:13px; opacity:0.85; }
   </style>
 </head>
 <body>
@@ -26,6 +29,13 @@
       <label>Model <input id="model" type="text" value="NousResearch/Meta-Llama-3-8B-Instruct" size="34"/></label>
       <label>API key <input id="apikey" type="text" value="devkey123" size="14"/></label>
       <label><input id="useRag" type="checkbox"> Use RAG</label>
+      <label><input id="useWeb" type="checkbox"> Enable Web Search</label>
+    </div>
+
+    <div class="upload">
+      <input id="docFile" type="file" accept=".txt,.md,.json,.csv,.log,.html,.py,.js,.ts" />
+      <button id="uploadBtn" type="button">Upload &amp; Ingest</button>
+      <span id="uploadStatus" class="upload-status"></span>
     </div>
 
     <div id="chat" class="chat"></div>
@@ -39,6 +49,11 @@
   const modelEl  = document.getElementById('model');
   const keyEl    = document.getElementById('apikey');
   const useRagEl = document.getElementById('useRag');
+  const useWebEl = document.getElementById('useWeb');
+
+  const fileEl   = document.getElementById('docFile');
+  const uploadBtn = document.getElementById('uploadBtn');
+  const uploadStatus = document.getElementById('uploadStatus');
 
   const history = [];
 
@@ -74,12 +89,20 @@
     add('user', userText);
 
     try {
-      if (useRagEl.checked) {
+      const useRag = useRagEl.checked;
+      const useWeb = useWebEl.checked;
+      if (useRag || useWeb) {
         // non-streaming RAG call
         const r = await fetch('/rag/query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: history, k: 5 })
+          body: JSON.stringify({
+            messages: history,
+            k: 5,
+            use_rag: useRag,
+            use_web_search: useWeb,
+            web_results: useWeb ? 4 : undefined
+          })
         });
         const j = await r.json();
         const text =
@@ -168,6 +191,34 @@
   sendBtn.addEventListener('click', chat);
   promptEl.addEventListener('keydown', e => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) chat();
+  });
+
+  uploadBtn.addEventListener('click', async () => {
+    const file = fileEl?.files?.[0];
+    if (!file) {
+      uploadStatus.textContent = 'Choose a file first.';
+      return;
+    }
+    uploadBtn.disabled = true;
+    uploadStatus.textContent = `Uploading ${file.name}...`;
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const resp = await fetch('/rag/upload', {
+        method: 'POST',
+        body: form
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(data.detail || data.error || resp.statusText);
+      }
+      uploadStatus.textContent = `Ingested ${data.chunks} chunk(s) from ${file.name}.`;
+      fileEl.value = '';
+    } catch (err) {
+      uploadStatus.textContent = `Error: ${err.message || err}`;
+    } finally {
+      uploadBtn.disabled = false;
+    }
   });
 </script>
 
